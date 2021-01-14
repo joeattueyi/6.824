@@ -3,11 +3,13 @@ package kvraft
 import "../labrpc"
 import "crypto/rand"
 import "math/big"
+import "time"
 
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	leaderID int
 }
 
 func nrand() int64 {
@@ -21,6 +23,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
+	ck.leaderID = 0
 	return ck
 }
 
@@ -39,7 +42,23 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 func (ck *Clerk) Get(key string) string {
 
 	// You will have to modify this function.
-	return ""
+
+	args := &GetArgs{
+		Key: key,
+		Uid: nrand(),
+	}
+
+	for {
+		DPrintf("[Clerk] Calling (%v) (%v) (%v)\n", args.Uid, "Get", key)
+		reply := &GetReply{}
+		if ok := ck.servers[ck.leaderID].Call("KVServer.Get", args, reply); ok && reply.Err != ErrWrongLeader {
+			DPrintf("[Clerk] Finished (%v) (%v) (%v)\n", args.Uid, "Get", key )
+			return reply.Value
+		}
+
+		ck.leaderID = (ck.leaderID + 1) % len(ck.servers)
+		time.Sleep(12 * time.Millisecond)
+	}
 }
 
 //
@@ -54,6 +73,25 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+
+	args := &PutAppendArgs{
+		Key: key,
+		Value: value,
+		Op: op,
+		Uid: nrand(),
+	}
+
+	for {
+		DPrintf("[Clerk] Calling (%v) (%v) (%v) (%v)\n",  args.Uid, op, key, value)
+		reply := &PutAppendReply{}
+		if ok := ck.servers[ck.leaderID].Call("KVServer.PutAppend", args, reply); ok && reply.Err == OK {
+			DPrintf("[Clerk] Finished (%v) (%v) (%v) (%v)\n", args.Uid, op, key, value)
+			return
+		}
+
+		ck.leaderID = (ck.leaderID + 1 ) % len(ck.servers)
+		time.Sleep(12 * time.Millisecond)
+	}
 }
 
 func (ck *Clerk) Put(key string, value string) {
